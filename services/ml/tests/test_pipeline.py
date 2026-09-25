@@ -50,6 +50,7 @@ def test_ingest_embeds_header_plus_chunk_but_stores_raw_chunk():
     [row] = store.inserted["chunks"]
     assert row.content == "Run rollback.sh twice."
     assert row.metadata["heading_path"] == ["Deploys", "Rollback"]
+    assert row.metadata["context"] == "runbook > Deploys > Rollback"  # feeds the weighted keyword index
     assert embedder.inputs == ["runbook > Deploys > Rollback\n\nRun rollback.sh twice."]
     assert store.inserted["mime_type"] == "text/markdown" and store.inserted["model"] == "fake:model"
 

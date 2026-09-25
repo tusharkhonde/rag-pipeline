@@ -23,12 +23,15 @@ function setup(ml: Partial<MlClient> = {}) {
   const repo = fakeRepo();
   const mlClient: MlClient = {
     ingest: vi.fn(async () => ({ document_id: 'doc-1', created: true, chunk_count: 3 })),
+    embed: vi.fn(),
+    info: vi.fn(),
     ...ml,
   };
   const app = buildApp({
     config: loadConfig({ DATABASE_URL: 'postgres://unused', LOG_LEVEL: 'fatal' }),
     repo,
     ml: mlClient,
+    retriever: { retrieve: vi.fn() },
     resolveClientId: async () => CLIENT_A,
   });
   return { app, repo, ml: mlClient };

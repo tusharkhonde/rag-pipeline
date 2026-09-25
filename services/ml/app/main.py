@@ -38,6 +38,13 @@ def health() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@app.get("/info")
+def info(request: Request) -> dict:
+    """Which model produces this service's vectors. The API keys its embedding cache on this."""
+    embedder = request.app.state.embedder
+    return {"model_id": embedder.model_id, "dim": embedder.dim}
+
+
 class IngestResponse(BaseModel):
     document_id: str
     created: bool

@@ -11,6 +11,10 @@ const Env = z.object({
   LLM_BASE_URL: z.string().default('http://localhost:11434/v1'),
   LLM_MODEL: z.string().default('qwen2.5:7b'),
   LLM_API_KEY: z.string().default('ollama'),
+  RETRIEVAL_MODE: z.enum(['hybrid', 'vector', 'keyword']).default('hybrid'),
+  RETRIEVAL_CANDIDATES: z.coerce.number().int().min(1).max(200).default(20), // per retriever, before fusion
+  RETRIEVAL_TOP_K: z.coerce.number().int().min(1).max(20).default(5), // chunks handed to the LLM
+  HNSW_EF_SEARCH: z.coerce.number().int().min(10).max(1000).default(100),
   MIGRATIONS_DIR: z.string().default(new URL('../../../db/migrations', import.meta.url).pathname),
 });
 

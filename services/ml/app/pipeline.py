@@ -62,7 +62,8 @@ class IngestPipeline:
                 max_tokens=max_tokens,
                 overlap_tokens=self._settings.chunk_overlap_tokens,
             ):
-                rows.append((chunk, {**section.metadata, "char_start": chunk.char_start, "char_end": chunk.char_end}))
+                metadata = {**section.metadata, "context": header, "char_start": chunk.char_start, "char_end": chunk.char_end}
+                rows.append((chunk, metadata))
                 embed_inputs.append(f"{header}\n\n{chunk.text}")
 
         if not rows:
