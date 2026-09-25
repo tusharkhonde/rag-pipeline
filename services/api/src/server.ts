@@ -10,6 +10,7 @@ import { createRepo } from './db/repo.js';
 import { createAnswerer } from './generation/answerer.js';
 import { createLlmClient } from './generation/llm.js';
 import { createMlClient } from './ml/client.js';
+import { createMetrics } from './observability/metrics.js';
 import { createQueryEmbedder } from './retrieval/queryEmbedder.js';
 import { createRetriever } from './retrieval/retriever.js';
 import { createSearchStore } from './retrieval/search.js';
@@ -45,6 +46,19 @@ const tokens = createTokenService(await loadSigningKey(config.JWT_KEYS_DIR), {
   ttlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
 });
 
+const readinessChecks = {
+  postgres: () => pool.query('SELECT 1'),
+  redis: () => redis.ping(),
+  ml: async () => {
+    const res = await fetch(`${config.ML_URL}/health`);
+    if (!res.ok) throw new Error(`status ${res.status}`);
+  },
+  llm: async () => {
+    const res = await fetch(`${config.LLM_BASE_URL}/models`, { headers: { authorization: `Bearer ${config.LLM_API_KEY}` } });
+    if (!res.ok) throw new Error(`status ${res.status}`);
+  },
+};
+
 const app = buildApp({
   config,
   repo: createRepo(pool),
@@ -53,6 +67,8 @@ const app = buildApp({
   answerer,
   clients: createClientStore(pool),
   tokens,
+  metrics: createMetrics({ hitThreshold: config.RETRIEVAL_HIT_THRESHOLD }),
+  readinessChecks,
 });
 await app.listen({ host: '0.0.0.0', port: config.PORT });
 

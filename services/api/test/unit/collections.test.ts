@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
+import { createMetrics } from '../../src/observability/metrics.js';
 import type { Collection, Repo } from '../../src/db/repo.js';
 import { MlClientError, type MlClient } from '../../src/ml/client.js';
 import { auth, fakeAuth } from './helpers.js';
@@ -35,6 +36,8 @@ function setup(ml: Partial<MlClient> = {}, scopes?: Parameters<typeof fakeAuth>[
     retriever: { retrieve: vi.fn() },
     answerer: { stream: vi.fn(), answer: vi.fn() },
     ...fakeAuth(CLIENT_A, scopes),
+    metrics: createMetrics({ hitThreshold: 0.6 }),
+    readinessChecks: {},
   });
   return { app, repo, ml: mlClient };
 }

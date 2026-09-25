@@ -27,6 +27,10 @@ const Env = z.object({
   // just waiting for expiry (no per-request DB lookup needed to validate a JWT).
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
   JWT_KEYS_DIR: z.string().default(new URL('../.keys', import.meta.url).pathname),
+  // A retrieval "hits" when its best cosine similarity reaches this. Calibrate from the
+  // rag_retrieval_top_vector_score histogram / eval report (answerable vs unanswerable questions).
+  RETRIEVAL_HIT_THRESHOLD: z.coerce.number().min(0).max(1).default(0.6),
+  METRICS_TOKEN: z.string().optional(),
   MIGRATIONS_DIR: z.string().default(new URL('../../../db/migrations', import.meta.url).pathname),
 });
 

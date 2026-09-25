@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Repo } from '../db/repo.js';
-import type { Answerer } from '../generation/answerer.js';
+import type { AnswerResult, Answerer } from '../generation/answerer.js';
+import type { Metrics } from '../observability/metrics.js';
 import { EmbeddingModelMismatchError } from '../retrieval/retriever.js';
 import type { RetrievalMode } from '../retrieval/types.js';
 import { searchBodySchema } from './search.js';
@@ -9,6 +10,7 @@ interface Deps {
   repo: Repo;
   answerer: Answerer;
   defaults: { mode: RetrievalMode; topK: number };
+  metrics: Metrics;
 }
 
 interface QueryBody {
@@ -18,7 +20,22 @@ interface QueryBody {
   stream?: boolean;
 }
 
-export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answerer, defaults }) => {
+export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answerer, defaults, metrics }) => {
+  // One structured line per answered question: everything needed to debug quality or latency
+  // (stage timings, token usage, cache, retrieval confidence) without logging the question text.
+  function record(log: typeof app.log, collectionId: string, result: AnswerResult, streamed: boolean) {
+    metrics.observeAnswer(result);
+    log.info(
+      {
+        event: 'rag_query', collectionId, streamed, cached: result.cached, refused: result.refused,
+        mode: result.retrieval.mode, sources: result.sources.length, citations: result.citations.length,
+        invalidCitations: result.invalidCitations, topVectorScore: result.retrieval.topVectorScore,
+        usage: result.usage, timings: result.timings, model: result.model,
+      },
+      'rag query',
+    );
+  }
+
   app.post<{ Params: { collectionId: string }; Body: QueryBody }>(
     '/collections/:collectionId/query',
     {
@@ -56,7 +73,9 @@ export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answere
 
       if (!req.body.stream) {
         try {
-          return await answerer.answer(request);
+          const result = await answerer.answer(request);
+          record(req.log, collection.id, result, false);
+          return result;
         } catch (err) {
           if (err instanceof EmbeddingModelMismatchError) return reply.code(409).send({ error: err.message });
           throw err;
@@ -66,6 +85,7 @@ export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answere
       // Server-Sent Events: one-way server→client stream over plain HTTP. Simpler than WebSockets
       // (no upgrade, works through proxies, auto-reconnect in browsers' EventSource) and a natural
       // fit for token streaming. We write to the raw response, so Fastify stops managing it.
+      const started = performance.now();
       reply.hijack();
       const res = reply.raw;
       res.writeHead(200, {
@@ -87,7 +107,10 @@ export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answere
         for await (const event of answerer.stream(request, abort.signal)) {
           if (event.type === 'delta') send('delta', { text: event.text });
           else if (event.type === 'sources') send('sources', { sources: event.sources });
-          else send('done', event.result);
+          else {
+            record(req.log, collection.id, event.result, true);
+            send('done', event.result);
+          }
         }
       } catch (err) {
         if (!abort.signal.aborted) {
@@ -97,6 +120,11 @@ export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answere
         }
       } finally {
         res.end();
+        // Hijacked responses skip Fastify's onResponse hook, so record HTTP latency here.
+        metrics.httpDuration.observe(
+          { method: 'POST', route: req.routeOptions.url ?? 'unmatched', status_code: 200 },
+          (performance.now() - started) / 1000,
+        );
       }
     },
   );

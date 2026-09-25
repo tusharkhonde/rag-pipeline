@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { Repo } from '../db/repo.js';
+import type { Metrics } from '../observability/metrics.js';
 import { EmbeddingModelMismatchError, type Retriever } from '../retrieval/retriever.js';
 import type { RetrievalMode } from '../retrieval/types.js';
 
@@ -7,6 +8,7 @@ interface Deps {
   repo: Repo;
   retriever: Retriever;
   defaults: { mode: RetrievalMode; topK: number };
+  metrics: Metrics;
 }
 
 export const searchBodySchema = {
@@ -16,7 +18,7 @@ export const searchBodySchema = {
 } as const;
 
 /** Retrieval only, no generation: for debugging relevance and for the offline eval harness. */
-export const searchRoutes: FastifyPluginAsync<Deps> = async (app, { repo, retriever, defaults }) => {
+export const searchRoutes: FastifyPluginAsync<Deps> = async (app, { repo, retriever, defaults, metrics }) => {
   app.post<{ Params: { collectionId: string }; Body: { query: string; topK?: number; mode?: RetrievalMode } }>(
     '/collections/:collectionId/search',
     {
@@ -34,13 +36,23 @@ export const searchRoutes: FastifyPluginAsync<Deps> = async (app, { repo, retrie
       const collection = await repo.getCollection(req.clientId, req.params.collectionId);
       if (!collection) return reply.code(404).send({ error: 'Collection not found' });
       try {
-        return await retriever.retrieve({
+        const result = await retriever.retrieve({
           clientId: req.clientId,
           collectionId: collection.id,
           query: req.body.query,
           mode: req.body.mode ?? defaults.mode,
           topK: req.body.topK ?? defaults.topK,
         });
+        metrics.observeRetrieval(result);
+        req.log.info(
+          {
+            event: 'rag_search', collectionId: collection.id, mode: result.mode, results: result.chunks.length,
+            topVectorScore: result.topVectorScore, hit: metrics.isHit(result), embeddingCached: result.embeddingCached,
+            timings: result.timings,
+          },
+          'search',
+        );
+        return result;
       } catch (err) {
         if (err instanceof EmbeddingModelMismatchError) return reply.code(409).send({ error: err.message });
         throw err;

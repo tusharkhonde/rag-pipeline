@@ -109,6 +109,10 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
+      RETRIEVAL_MODE: ${RETRIEVAL_MODE:-hybrid}
+      RETRIEVAL_TOP_K: ${RETRIEVAL_TOP_K:-5}
+      RETRIEVAL_HIT_THRESHOLD: ${RETRIEVAL_HIT_THRESHOLD:-0.6}
+      METRICS_TOKEN: ${METRICS_TOKEN:-}
     volumes:
       - api_keys:/app/keys # JWT signing key persists across restarts (tokens stay valid)
     ports:

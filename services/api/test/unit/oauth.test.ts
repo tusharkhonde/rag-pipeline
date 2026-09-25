@@ -7,6 +7,7 @@ import type { ClientStore } from '../../src/auth/clients.js';
 import { loadSigningKey } from '../../src/auth/keys.js';
 import { createTokenService, type TokenService } from '../../src/auth/tokens.js';
 import { loadConfig } from '../../src/config.js';
+import { createMetrics } from '../../src/observability/metrics.js';
 
 const ID = 'rag_client';
 const SECRET = 's3cret/with:odd+chars';
@@ -29,6 +30,8 @@ function setup() {
     repo: { listCollections: vi.fn(async () => []) } as never,
     ml: {} as never, retriever: {} as never, answerer: {} as never,
     clients, tokens,
+    metrics: createMetrics({ hitThreshold: 0.6 }),
+    readinessChecks: {},
   });
   return { app, clients };
 }
