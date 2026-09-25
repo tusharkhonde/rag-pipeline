@@ -1,12 +1,14 @@
 """Internal ML service. Not exposed outside the compose network: the Node API authenticates
-callers and resolves tenancy, then calls this service with an already-authorized collection_id."""
+callers and resolves tenancy, then calls this service with the tenant and collection ids.
+Writes still run under that tenant's Row-Level Security, so this service can't be used to
+write into a collection the tenant doesn't own even if the API's own check were bypassed."""
 
 from contextlib import asynccontextmanager
 from typing import Literal
 from uuid import UUID
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
-from psycopg.errors import ForeignKeyViolation
+from psycopg.errors import ForeignKeyViolation, InsufficientPrivilege
 from pydantic import BaseModel, Field
 
 from app.config import Settings
@@ -54,20 +56,23 @@ class IngestResponse(BaseModel):
 # Plain `def` (not `async def`): FastAPI runs these in a threadpool, so CPU-bound
 # embedding doesn't block the event loop and stall /health or other requests.
 @app.post("/ingest", response_model=IngestResponse)
-def ingest(request: Request, collection_id: UUID = Form(...), file: UploadFile = File(...)):
+def ingest(
+    request: Request, client_id: UUID = Form(...), collection_id: UUID = Form(...), file: UploadFile = File(...)
+):
     limit = request.app.state.settings.max_upload_bytes
     data = file.file.read(limit + 1)
     if len(data) > limit:
         raise HTTPException(413, f"File exceeds {limit} bytes")
     try:
         result = request.app.state.pipeline.ingest(
-            str(collection_id), file.filename or "upload", file.content_type, data
+            str(client_id), str(collection_id), file.filename or "upload", file.content_type, data
         )
     except UnsupportedFileType as e:
         raise HTTPException(415, str(e)) from e
     except EmptyDocument as e:
         raise HTTPException(422, str(e)) from e
-    except ForeignKeyViolation as e:
+    except (ForeignKeyViolation, InsufficientPrivilege) as e:
+        # Missing collection, or one RLS says this tenant can't write to: same answer, no leak.
         raise HTTPException(404, "Collection not found") from e
     return IngestResponse(**result.__dict__)
 

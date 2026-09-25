@@ -22,6 +22,7 @@ export const queryRoutes: FastifyPluginAsync<Deps> = async (app, { repo, answere
   app.post<{ Params: { collectionId: string }; Body: QueryBody }>(
     '/collections/:collectionId/query',
     {
+      config: { scope: 'query' },
       schema: {
         params: {
           type: 'object',

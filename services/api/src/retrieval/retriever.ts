@@ -13,6 +13,7 @@ export class EmbeddingModelMismatchError extends Error {
 }
 
 export interface RetrieveRequest {
+  clientId: string;
   collectionId: string;
   query: string;
   mode: RetrievalMode;
@@ -51,17 +52,17 @@ export function createRetriever(
   // Checked once per model id per collection; a model switch changes the model id, so it re-checks.
   const verified = new Set<string>();
 
-  async function assertSameModel(collectionId: string) {
+  async function assertSameModel(clientId: string, collectionId: string) {
     const modelId = await embedder.modelId();
     const key = `${collectionId}:${modelId}`;
     if (verified.has(key)) return;
-    const foreign = await store.foreignEmbeddingModel(collectionId, modelId);
+    const foreign = await store.foreignEmbeddingModel(clientId, collectionId, modelId);
     if (foreign) throw new EmbeddingModelMismatchError(foreign, modelId);
     verified.add(key);
   }
 
   return {
-    async retrieve({ collectionId, query, mode, topK }) {
+    async retrieve({ clientId, collectionId, query, mode, topK }) {
       const timings: Record<string, number> = {};
       const text = normalizeQuery(query);
       const useVector = mode !== 'keyword';
@@ -70,16 +71,16 @@ export function createRetriever(
       let embeddingCached: boolean | null = null;
       const vectorPromise = useVector
         ? (async () => {
-            await assertSameModel(collectionId);
+            await assertSameModel(clientId, collectionId);
             const embedding = await timed(timings, 'embed', () => embedder.embed(text));
             embeddingCached = embedding.cached;
             return timed(timings, 'vector_search', () =>
-              store.vectorSearch(collectionId, embedding.vector, opts.candidates),
+              store.vectorSearch(clientId, collectionId, embedding.vector, opts.candidates),
             );
           })()
         : Promise.resolve([]);
       const keywordPromise = useKeyword
-        ? timed(timings, 'keyword_search', () => store.keywordSearch(collectionId, text, opts.candidates))
+        ? timed(timings, 'keyword_search', () => store.keywordSearch(clientId, collectionId, text, opts.candidates))
         : Promise.resolve([]);
 
       // The two retrievers are independent, so run them concurrently: latency = max, not sum.

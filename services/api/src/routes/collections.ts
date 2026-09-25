@@ -17,6 +17,7 @@ export const collectionRoutes: FastifyPluginAsync<Deps> = async (app, { repo, ml
   app.post<{ Body: { name: string } }>(
     '/collections',
     {
+      config: { scope: 'documents:write' },
       schema: {
         body: {
           type: 'object',
@@ -33,11 +34,13 @@ export const collectionRoutes: FastifyPluginAsync<Deps> = async (app, { repo, ml
     },
   );
 
-  app.get('/collections', async (req) => ({ collections: await repo.listCollections(req.clientId) }));
+  app.get('/collections', { config: { scope: 'query' } }, async (req) => ({
+    collections: await repo.listCollections(req.clientId),
+  }));
 
   app.get<{ Params: { collectionId: string } }>(
     '/collections/:collectionId/documents',
-    { schema: { params: collectionParams } },
+    { config: { scope: 'query' }, schema: { params: collectionParams } },
     async (req, reply) => {
       const collection = await repo.getCollection(req.clientId, req.params.collectionId);
       if (!collection) return reply.code(404).send({ error: 'Collection not found' });
@@ -47,7 +50,7 @@ export const collectionRoutes: FastifyPluginAsync<Deps> = async (app, { repo, ml
 
   app.post<{ Params: { collectionId: string } }>(
     '/collections/:collectionId/documents',
-    { schema: { params: collectionParams } },
+    { config: { scope: 'documents:write' }, schema: { params: collectionParams } },
     async (req, reply) => {
       // Ownership is checked HERE, before the file goes anywhere. The ml service trusts
       // the collection id it's given, so this check is the tenancy boundary.
@@ -61,7 +64,7 @@ export const collectionRoutes: FastifyPluginAsync<Deps> = async (app, { repo, ml
       const data = await file.toBuffer();
 
       try {
-        const result = await ml.ingest(collection.id, { filename: file.filename, mimeType: file.mimetype, data });
+        const result = await ml.ingest(req.clientId, collection.id, { filename: file.filename, mimeType: file.mimetype, data });
         return reply.code(result.created ? 201 : 200).send({
           documentId: result.document_id,
           created: result.created,

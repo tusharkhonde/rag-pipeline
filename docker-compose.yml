@@ -109,6 +109,8 @@ services:
       LLM_BASE_URL: ${LLM_BASE_URL:-http://ollama:11434/v1}
       LLM_MODEL: ${LLM_MODEL:-qwen2.5:7b}
       LLM_API_KEY: ${LLM_API_KEY:-ollama}
+    volumes:
+      - api_keys:/app/keys # JWT signing key persists across restarts (tokens stay valid)
     ports:
       - "3000:3000" # the only service meant to be reached from outside
     depends_on:
@@ -129,3 +131,4 @@ services:
 volumes:
   pgdata:
   ollama_models:
+  api_keys:

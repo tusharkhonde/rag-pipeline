@@ -59,14 +59,14 @@ afterAll(async () => {
 
 describe('vectorSearch', () => {
   it('orders by cosine similarity and reports it as the score', async () => {
-    const hits = await store.vectorSearch(collectionA, vec(0), 3);
+    const hits = await store.vectorSearch(clientId, collectionA, vec(0), 3);
     expect(hits.map((h) => h.content.split(' ')[0])).toEqual(['Rollbacks', 'Canary', 'On-call']);
     expect(hits[0]!.vectorScore).toBeCloseTo(1, 5);
     expect(hits[2]!.vectorScore).toBeCloseTo(0, 5);
   });
 
   it('only returns chunks from the requested collection', async () => {
-    const hits = await store.vectorSearch(collectionA, vec(0), 10);
+    const hits = await store.vectorSearch(clientId, collectionA, vec(0), 10);
     expect(hits).toHaveLength(3);
     expect(hits.every((h) => !h.content.includes('other tenant'))).toBe(true);
   });
@@ -76,19 +76,19 @@ describe('keywordSearch', () => {
   it('uses OR semantics with stemming, so natural questions match', async () => {
     // "rolled" stems to "roll"; "percent" is unrelated to the top chunk. With AND semantics
     // (plainto_tsquery) this question would match nothing.
-    const hits = await store.keywordSearch(collectionA, 'how are releases rolled back?', 5);
+    const hits = await store.keywordSearch(clientId, collectionA, 'how are releases rolled back?', 5);
     expect(hits.map((h) => h.content.split(' ')[0])).toEqual(expect.arrayContaining(['Canary']));
     expect(hits.every((h) => !h.content.includes('other tenant'))).toBe(true);
   });
 
   it('returns nothing for a query made only of stopwords', async () => {
-    expect(await store.keywordSearch(collectionA, 'what is the', 5)).toEqual([]);
+    expect(await store.keywordSearch(clientId, collectionA, 'what is the', 5)).toEqual([]);
   });
 });
 
 describe('foreignEmbeddingModel', () => {
   it('detects chunks embedded with a different model', async () => {
-    expect(await store.foreignEmbeddingModel(collectionA, 'ollama:test')).toBeNull();
-    expect(await store.foreignEmbeddingModel(collectionA, 'openai:other')).toBe('ollama:test');
+    expect(await store.foreignEmbeddingModel(clientId, collectionA, 'ollama:test')).toBeNull();
+    expect(await store.foreignEmbeddingModel(clientId, collectionA, 'openai:other')).toBe('ollama:test');
   });
 });

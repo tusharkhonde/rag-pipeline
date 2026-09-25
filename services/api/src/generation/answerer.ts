@@ -110,6 +110,7 @@ export function createAnswerer(deps: Deps): Answerer {
     }
 
     const retrieval = await deps.retriever.retrieve({
+      clientId: req.clientId,
       collectionId: req.collection.id,
       query: req.question,
       mode: req.mode,

@@ -20,6 +20,7 @@ export const searchRoutes: FastifyPluginAsync<Deps> = async (app, { repo, retrie
   app.post<{ Params: { collectionId: string }; Body: { query: string; topK?: number; mode?: RetrievalMode } }>(
     '/collections/:collectionId/search',
     {
+      config: { scope: 'query' },
       schema: {
         params: {
           type: 'object',
@@ -34,6 +35,7 @@ export const searchRoutes: FastifyPluginAsync<Deps> = async (app, { repo, retrie
       if (!collection) return reply.code(404).send({ error: 'Collection not found' });
       try {
         return await retriever.retrieve({
+          clientId: req.clientId,
           collectionId: collection.id,
           query: req.body.query,
           mode: req.body.mode ?? defaults.mode,

@@ -1,12 +1,15 @@
 import { buildApp } from './app.js';
+import { createClientStore } from './auth/clients.js';
+import { loadSigningKey } from './auth/keys.js';
+import { createTokenService } from './auth/tokens.js';
+import { createRedis, failSafe, redisCache } from './cache/cache.js';
 import { loadConfig } from './config.js';
 import { migrate } from './db/migrate.js';
 import { createPool } from './db/pool.js';
-import { createRepo, ensureDevClient } from './db/repo.js';
-import { createMlClient } from './ml/client.js';
-import { createRedis, failSafe, redisCache } from './cache/cache.js';
+import { createRepo } from './db/repo.js';
 import { createAnswerer } from './generation/answerer.js';
 import { createLlmClient } from './generation/llm.js';
+import { createMlClient } from './ml/client.js';
 import { createQueryEmbedder } from './retrieval/queryEmbedder.js';
 import { createRetriever } from './retrieval/retriever.js';
 import { createSearchStore } from './retrieval/search.js';
@@ -14,7 +17,6 @@ import { createSearchStore } from './retrieval/search.js';
 const config = loadConfig();
 const pool = createPool(config.DATABASE_URL);
 await migrate(pool, config.MIGRATIONS_DIR, (msg) => console.log(msg));
-const devClientId = await ensureDevClient(pool);
 
 const redis = createRedis(config.REDIS_URL);
 const ml = createMlClient(config.ML_URL);
@@ -37,6 +39,11 @@ const answerer = createAnswerer({
   maxContextTokens: config.MAX_CONTEXT_TOKENS,
   cacheTtlSeconds: config.ANSWER_CACHE_TTL_SECONDS,
 });
+const tokens = createTokenService(await loadSigningKey(config.JWT_KEYS_DIR), {
+  issuer: config.JWT_ISSUER,
+  audience: config.JWT_AUDIENCE,
+  ttlSeconds: config.ACCESS_TOKEN_TTL_SECONDS,
+});
 
 const app = buildApp({
   config,
@@ -44,7 +51,8 @@ const app = buildApp({
   ml,
   retriever,
   answerer,
-  resolveClientId: async () => devClientId,
+  clients: createClientStore(pool),
+  tokens,
 });
 await app.listen({ host: '0.0.0.0', port: config.PORT });
 

@@ -21,6 +21,12 @@ const Env = z.object({
   // the system prompt, question and answer (Ollama is configured for 8192 in docker-compose.yml).
   MAX_CONTEXT_TOKENS: z.coerce.number().int().min(256).default(3000),
   ANSWER_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(3600),
+  JWT_ISSUER: z.string().default('rag-api'),
+  JWT_AUDIENCE: z.string().default('rag-api'),
+  // Short-lived bearer tokens: a leaked token is useful for minutes, and "revocation" is mostly
+  // just waiting for expiry (no per-request DB lookup needed to validate a JWT).
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+  JWT_KEYS_DIR: z.string().default(new URL('../.keys', import.meta.url).pathname),
   MIGRATIONS_DIR: z.string().default(new URL('../../../db/migrations', import.meta.url).pathname),
 });
 

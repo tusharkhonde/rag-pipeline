@@ -3,6 +3,7 @@ import { buildApp } from '../../src/app.js';
 import { loadConfig } from '../../src/config.js';
 import type { Collection, Repo } from '../../src/db/repo.js';
 import { MlClientError, type MlClient } from '../../src/ml/client.js';
+import { auth, fakeAuth } from './helpers.js';
 
 const CLIENT_A = 'client-a';
 const OWNED = '11111111-1111-4111-8111-111111111111';
@@ -19,7 +20,7 @@ function fakeRepo(): Repo {
   };
 }
 
-function setup(ml: Partial<MlClient> = {}) {
+function setup(ml: Partial<MlClient> = {}, scopes?: Parameters<typeof fakeAuth>[1]) {
   const repo = fakeRepo();
   const mlClient: MlClient = {
     ingest: vi.fn(async () => ({ document_id: 'doc-1', created: true, chunk_count: 3 })),
@@ -33,7 +34,7 @@ function setup(ml: Partial<MlClient> = {}) {
     ml: mlClient,
     retriever: { retrieve: vi.fn() },
     answerer: { stream: vi.fn(), answer: vi.fn() },
-    resolveClientId: async () => CLIENT_A,
+    ...fakeAuth(CLIENT_A, scopes),
   });
   return { app, repo, ml: mlClient };
 }
@@ -47,23 +48,24 @@ function upload(filename = 'notes.md', content = '# Hi\nThere.') {
 describe('collections routes', () => {
   it('creates a collection scoped to the calling client', async () => {
     const { app, repo } = setup();
-    const res = await app.inject({ method: 'POST', url: '/collections', payload: { name: 'handbook' } });
+    const res = await app.inject({ method: 'POST', url: '/collections', headers: auth, payload: { name: 'handbook' } });
     expect(res.statusCode).toBe(201);
     expect(repo.createCollection).toHaveBeenCalledWith(CLIENT_A, 'handbook');
   });
 
   it('returns 409 for a duplicate name and 400 for an invalid one', async () => {
     const { app } = setup();
-    expect((await app.inject({ method: 'POST', url: '/collections', payload: { name: 'taken' } })).statusCode).toBe(409);
-    expect((await app.inject({ method: 'POST', url: '/collections', payload: { name: '../etc' } })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'POST', url: '/collections', headers: auth, payload: { name: 'taken' } })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'POST', url: '/collections', headers: auth, payload: { name: '../etc' } })).statusCode).toBe(400);
   });
 
   it('forwards an upload for an owned collection to the ml service', async () => {
     const { app, ml } = setup();
-    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, payload: upload() });
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, headers: auth, payload: upload() });
     expect(res.statusCode).toBe(201);
     expect(res.json()).toEqual({ documentId: 'doc-1', created: true, chunkCount: 3 });
-    const [collectionId, file] = vi.mocked(ml.ingest).mock.calls[0]!;
+    const [clientId, collectionId, file] = vi.mocked(ml.ingest).mock.calls[0]!;
+    expect(clientId).toBe(CLIENT_A);
     expect(collectionId).toBe(OWNED);
     expect(file.filename).toBe('notes.md');
     expect(file.data.toString()).toBe('# Hi\nThere.');
@@ -71,14 +73,14 @@ describe('collections routes', () => {
 
   it("returns 404 (not 403) for another client's collection and never calls ml", async () => {
     const { app, ml } = setup();
-    const res = await app.inject({ method: 'POST', url: `/collections/${FOREIGN}/documents`, payload: upload() });
+    const res = await app.inject({ method: 'POST', url: `/collections/${FOREIGN}/documents`, headers: auth, payload: upload() });
     expect(res.statusCode).toBe(404);
     expect(ml.ingest).not.toHaveBeenCalled();
   });
 
   it('returns 200 when the same file was already ingested', async () => {
     const { app } = setup({ ingest: async () => ({ document_id: 'doc-1', created: false, chunk_count: 3 }) });
-    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, payload: upload() });
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, headers: auth, payload: upload() });
     expect(res.statusCode).toBe(200);
     expect(res.json().created).toBe(false);
   });
@@ -89,15 +91,39 @@ describe('collections routes', () => {
         throw new MlClientError(415, 'Unsupported file type');
       },
     });
-    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, payload: upload('a.png') });
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, headers: auth, payload: upload('a.png') });
     expect(res.statusCode).toBe(415);
     expect(res.json().error).toBe('Unsupported file type');
   });
 
   it('rejects a non-uuid collection id before touching the database', async () => {
     const { app, repo } = setup();
-    const res = await app.inject({ method: 'GET', url: '/collections/not-a-uuid/documents' });
+    const res = await app.inject({ method: 'GET', url: '/collections/not-a-uuid/documents', headers: auth });
     expect(res.statusCode).toBe(400);
     expect(repo.getCollection).not.toHaveBeenCalled();
+  });
+
+  it('401s without a token, before reading the upload body', async () => {
+    const { app, repo } = setup();
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, payload: upload() });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers['www-authenticate']).toBe('Bearer realm="rag-api"');
+    expect(repo.getCollection).not.toHaveBeenCalled();
+  });
+
+  it('401s with an invalid token and says so in WWW-Authenticate', async () => {
+    const { app } = setup();
+    const res = await app.inject({ method: 'GET', url: '/collections', headers: { authorization: 'Bearer forged' } });
+    expect(res.statusCode).toBe(401);
+    expect(res.headers['www-authenticate']).toContain('error="invalid_token"');
+  });
+
+  it('403s when the token lacks the route scope (query-only client uploading)', async () => {
+    const { app, ml } = setup({}, ['query']);
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/documents`, headers: auth, payload: upload() });
+    expect(res.statusCode).toBe(403);
+    expect(res.headers['www-authenticate']).toContain('scope="documents:write"');
+    expect(ml.ingest).not.toHaveBeenCalled();
+    expect((await app.inject({ method: 'GET', url: '/collections', headers: auth })).statusCode).toBe(200);
   });
 });

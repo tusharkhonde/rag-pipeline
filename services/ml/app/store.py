@@ -18,6 +18,15 @@ def to_pgvector(vector: list[float]) -> str:
     return "[" + ",".join(f"{x:.9g}" for x in vector) + "]"
 
 
+def _as_tenant(conn, client_id: str) -> None:
+    """Scope this transaction to one tenant under Postgres Row-Level Security (migration 003).
+
+    SET LOCAL lasts until the transaction ends, so nothing leaks to the next use of a pooled connection.
+    """
+    conn.execute("SET LOCAL ROLE rag_app")
+    conn.execute("SELECT set_config('app.client_id', %s, true)", (client_id,))
+
+
 class Store:
     def __init__(self, dsn: str):
         self._pool = ConnectionPool(dsn, min_size=1, max_size=4, open=True)
@@ -25,8 +34,9 @@ class Store:
     def close(self) -> None:
         self._pool.close()
 
-    def find_document(self, collection_id: str, sha256: str) -> dict | None:
-        with self._pool.connection() as conn:
+    def find_document(self, client_id: str, collection_id: str, sha256: str) -> dict | None:
+        with self._pool.connection() as conn, conn.transaction():
+            _as_tenant(conn, client_id)
             row = conn.execute(
                 "SELECT id, chunk_count FROM documents WHERE collection_id = %s AND sha256 = %s",
                 (collection_id, sha256),
@@ -35,6 +45,7 @@ class Store:
 
     def insert_document(
         self,
+        client_id: str,
         collection_id: str,
         filename: str,
         mime_type: str,
@@ -47,8 +58,12 @@ class Store:
         ON CONFLICT DO NOTHING makes the unique (collection_id, sha256) constraint the
         arbiter when two identical uploads race: exactly one wins, the other gets the
         existing id. A check-then-insert in application code can't guarantee that.
+
+        Runs as the tenant: if collection_id belongs to another client, RLS rejects the insert
+        even though the API already checked ownership (defense in depth).
         """
         with self._pool.connection() as conn, conn.transaction():
+            _as_tenant(conn, client_id)
             row = conn.execute(
                 """INSERT INTO documents (collection_id, filename, mime_type, sha256, status, chunk_count)
                    VALUES (%s, %s, %s, %s, 'ready', %s)

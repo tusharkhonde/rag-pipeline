@@ -29,13 +29,13 @@ describe('retriever', () => {
     const store = fakeStore();
     const embedder = fakeEmbedder();
     const r = await createRetriever(store, embedder, { candidates: 20 }).retrieve({
-      collectionId: 'c', query: '  roll   back? ', mode: 'hybrid', topK: 3,
+      clientId: 't', collectionId: 'c', query: '  roll   back? ', mode: 'hybrid', topK: 3,
     });
     expect(r.chunks[0]).toMatchObject({ chunkId: 'both', vectorScore: 0.7, keywordScore: 0.4 });
     expect(r.chunks).toHaveLength(3);
     expect(r.topVectorScore).toBe(0.8);
     expect(embedder.embed).toHaveBeenCalledWith('roll back?');
-    expect(store.keywordSearch).toHaveBeenCalledWith('c', 'roll back?', 20);
+    expect(store.keywordSearch).toHaveBeenCalledWith('t', 'c', 'roll back?', 20);
     expect(Object.keys(r.timings).sort()).toEqual(['embed', 'keyword_search', 'vector_search']);
   });
 
@@ -44,11 +44,11 @@ describe('retriever', () => {
     const embedder = fakeEmbedder();
     const retriever = createRetriever(store, embedder, { candidates: 20 });
 
-    const v = await retriever.retrieve({ collectionId: 'c', query: 'q', mode: 'vector', topK: 5 });
+    const v = await retriever.retrieve({ clientId: 't', collectionId: 'c', query: 'q', mode: 'vector', topK: 5 });
     expect(v.chunks.map((c) => c.chunkId)).toEqual(['v1', 'both']);
     expect(store.keywordSearch).not.toHaveBeenCalled();
 
-    const k = await retriever.retrieve({ collectionId: 'c', query: 'q', mode: 'keyword', topK: 5 });
+    const k = await retriever.retrieve({ clientId: 't', collectionId: 'c', query: 'q', mode: 'keyword', topK: 5 });
     expect(k.chunks.map((c) => c.chunkId)).toEqual(['k1', 'both']);
     expect(k.topVectorScore).toBeNull();
     expect(embedder.embed).toHaveBeenCalledTimes(1);
@@ -58,7 +58,7 @@ describe('retriever', () => {
     const store = fakeStore({ foreignEmbeddingModel: vi.fn(async () => 'openai:text-embedding-3-small@768') });
     await expect(
       createRetriever(store, fakeEmbedder(), { candidates: 20 }).retrieve({
-        collectionId: 'c', query: 'q', mode: 'hybrid', topK: 5,
+        clientId: 't', collectionId: 'c', query: 'q', mode: 'hybrid', topK: 5,
       }),
     ).rejects.toBeInstanceOf(EmbeddingModelMismatchError);
     expect(store.vectorSearch).not.toHaveBeenCalled();

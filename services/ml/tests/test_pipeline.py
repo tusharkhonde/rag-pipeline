@@ -20,11 +20,11 @@ class FakeStore:
         self.existing = existing
         self.inserted = None
 
-    def find_document(self, collection_id, sha256):
+    def find_document(self, client_id, collection_id, sha256):
         return self.existing
 
-    def insert_document(self, collection_id, filename, mime_type, sha256, embedding_model, chunks):
-        self.inserted = dict(filename=filename, mime_type=mime_type, model=embedding_model, chunks=chunks)
+    def insert_document(self, client_id, collection_id, filename, mime_type, sha256, embedding_model, chunks):
+        self.inserted = dict(client_id=client_id, filename=filename, mime_type=mime_type, model=embedding_model, chunks=chunks)
         return "doc-1", True
 
 
@@ -44,7 +44,7 @@ def test_context_header_uses_filename_stem_and_heading_path():
 def test_ingest_embeds_header_plus_chunk_but_stores_raw_chunk():
     store, embedder = FakeStore(), FakeEmbedder()
     md = b"# Deploys\n## Rollback\nRun rollback.sh twice."
-    result = make_pipeline(store, embedder).ingest("c1", "runbook.md", None, md)
+    result = make_pipeline(store, embedder).ingest("t1", "c1", "runbook.md", None, md)
 
     assert result.created and result.chunk_count == 1
     [row] = store.inserted["chunks"]
@@ -53,11 +53,12 @@ def test_ingest_embeds_header_plus_chunk_but_stores_raw_chunk():
     assert row.metadata["context"] == "runbook > Deploys > Rollback"  # feeds the weighted keyword index
     assert embedder.inputs == ["runbook > Deploys > Rollback\n\nRun rollback.sh twice."]
     assert store.inserted["mime_type"] == "text/markdown" and store.inserted["model"] == "fake:model"
+    assert store.inserted["client_id"] == "t1"  # writes are scoped to the tenant (RLS)
 
 
 def test_duplicate_upload_skips_parsing_and_embedding():
     embedder = FakeEmbedder()
     store = FakeStore(existing={"id": "doc-0", "chunk_count": 7})
-    result = make_pipeline(store, embedder).ingest("c1", "a.txt", None, b"hello")
+    result = make_pipeline(store, embedder).ingest("t1", "c1", "a.txt", None, b"hello")
     assert (result.document_id, result.created, result.chunk_count) == ("doc-0", False, 7)
     assert embedder.inputs == [] and store.inserted is None

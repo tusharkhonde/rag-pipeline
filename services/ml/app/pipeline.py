@@ -40,12 +40,14 @@ class IngestPipeline:
         self._embedder = embedder
         self._store = store
 
-    def ingest(self, collection_id: str, filename: str, content_type: str | None, data: bytes) -> IngestResult:
+    def ingest(
+        self, client_id: str, collection_id: str, filename: str, content_type: str | None, data: bytes
+    ) -> IngestResult:
         kind = detect_kind(filename, content_type)
         sha256 = hashlib.sha256(data).hexdigest()
 
         # Cheap early exit before the expensive embed step; insert_document still handles races.
-        existing = self._store.find_document(collection_id, sha256)
+        existing = self._store.find_document(client_id, collection_id, sha256)
         if existing:
             return IngestResult(existing["id"], False, existing["chunk_count"])
 
@@ -78,6 +80,6 @@ class IngestPipeline:
             for i, ((chunk, metadata), vector) in enumerate(zip(rows, vectors, strict=True))
         ]
         document_id, created = self._store.insert_document(
-            collection_id, filename, _MIME[kind], sha256, self._embedder.model_id, chunk_rows
+            client_id, collection_id, filename, _MIME[kind], sha256, self._embedder.model_id, chunk_rows
         )
         return IngestResult(document_id, created, len(chunk_rows))

@@ -23,7 +23,7 @@ export class MlClientError extends Error {
 }
 
 export interface MlClient {
-  ingest(collectionId: string, file: UploadedFile): Promise<IngestResult>;
+  ingest(clientId: string, collectionId: string, file: UploadedFile): Promise<IngestResult>;
   embed(texts: string[], kind: EmbedKind): Promise<{ model: string; embeddings: number[][] }>;
   info(): Promise<{ model_id: string; dim: number }>;
 }
@@ -40,8 +40,9 @@ export function createMlClient(baseUrl: string, fetchImpl: typeof fetch = fetch)
   }
 
   return {
-    ingest(collectionId, file) {
+    ingest(clientId, collectionId, file) {
       const form = new FormData();
+      form.append('client_id', clientId);
       form.append('collection_id', collectionId);
       form.append('file', new Blob([new Uint8Array(file.data)], { type: file.mimeType }), file.filename);
       // Ingest embeds every chunk, so a large PDF can take a while; still bound it.
