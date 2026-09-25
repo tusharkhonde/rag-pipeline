@@ -50,7 +50,7 @@ CREATE TABLE chunks (
   token_count     integer NOT NULL,
   -- page (PDFs), heading_path (Markdown), char_start/char_end: used to render citations.
   metadata        jsonb NOT NULL DEFAULT '{}',
-  -- 768 dims = BAAI/bge-base-en-v1.5. Changing embedding models means a new column/table + re-embed.
+  -- 768 dims = nomic-embed-text (via Ollama). Changing embedding models means a new column/table + re-embed.
   embedding       vector(768) NOT NULL,
   -- Which model produced the vector; the API refuses to query if it doesn't match the configured model.
   embedding_model text NOT NULL,

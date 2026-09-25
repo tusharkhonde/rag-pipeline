@@ -10,7 +10,7 @@ from psycopg.errors import ForeignKeyViolation
 from pydantic import BaseModel, Field
 
 from app.config import Settings
-from app.embedder import build_embedder, build_token_counter
+from app.embedder import approx_token_count, build_embedder
 from app.parsers import UnsupportedFileType
 from app.pipeline import EmptyDocument, IngestPipeline
 from app.store import Store
@@ -18,14 +18,14 @@ from app.store import Store
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Load models before serving: /health only answers once the models are in memory,
-    # so the compose healthcheck doubles as a "models loaded" check.
+    # Connect to Postgres and probe the embedding provider before serving: /health only answers
+    # once both work, so the compose healthcheck doubles as a dependency check.
     settings = Settings.from_env()
     store = Store(settings.database_url)
     embedder = build_embedder(settings)
     app.state.settings = settings
     app.state.embedder = embedder
-    app.state.pipeline = IngestPipeline(settings, build_token_counter(settings.chunk_tokenizer), embedder, store)
+    app.state.pipeline = IngestPipeline(settings, approx_token_count, embedder, store)
     yield
     store.close()
 

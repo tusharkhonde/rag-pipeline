@@ -76,8 +76,6 @@ services:
     build:
       context: ./services/ml
       target: runtime
-      args:
-        ML_EXTRAS: ${ML_EXTRAS:-} # set to "local" for in-process sentence-transformers
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag}@postgres:5432/${POSTGRES_DB:-rag}
       OLLAMA_URL: http://ollama:11434

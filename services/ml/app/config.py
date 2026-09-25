@@ -8,26 +8,14 @@ _PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
         "EMBEDDING_MODEL": "nomic-embed-text",
         "EMBED_QUERY_PREFIX": "search_query: ",
         "EMBED_DOCUMENT_PREFIX": "search_document: ",
-        "CHUNK_TOKENIZER": "approx",
         "CHUNK_TARGET_TOKENS": "600",
         "CHUNK_MAX_TOKENS": "800",
         "CHUNK_OVERLAP_TOKENS": "80",
-    },
-    # bge-base-en-v1.5: 768-d, 512-token window, instruction prefix on queries only.
-    "local": {
-        "EMBEDDING_MODEL": "BAAI/bge-base-en-v1.5",
-        "EMBED_QUERY_PREFIX": "Represent this sentence for searching relevant passages: ",
-        "EMBED_DOCUMENT_PREFIX": "",
-        "CHUNK_TOKENIZER": "hf:BAAI/bge-base-en-v1.5",
-        "CHUNK_TARGET_TOKENS": "450",
-        "CHUNK_MAX_TOKENS": "500",  # leaves headroom under 512 for [CLS]/[SEP]
-        "CHUNK_OVERLAP_TOKENS": "64",
     },
     "openai": {
         "EMBEDDING_MODEL": "text-embedding-3-small",
         "EMBED_QUERY_PREFIX": "",
         "EMBED_DOCUMENT_PREFIX": "",
-        "CHUNK_TOKENIZER": "approx",
         "CHUNK_TARGET_TOKENS": "600",
         "CHUNK_MAX_TOKENS": "800",
         "CHUNK_OVERLAP_TOKENS": "80",
@@ -38,7 +26,7 @@ _PROVIDER_DEFAULTS: dict[str, dict[str, str]] = {
 @dataclass(frozen=True)
 class Settings:
     database_url: str
-    embeddings_provider: str  # ollama | local | openai
+    embeddings_provider: str  # ollama | openai
     embedding_model: str
     embedding_dim: int  # must match vector(N) in db/migrations/001_init.sql
     query_prefix: str
@@ -47,7 +35,6 @@ class Settings:
     ollama_num_ctx: int
     openai_base_url: str
     openai_api_key: str
-    chunk_tokenizer: str  # 'approx' or 'hf:<model>'
     chunk_target_tokens: int
     chunk_max_tokens: int
     chunk_overlap_tokens: int
@@ -73,7 +60,6 @@ class Settings:
             ollama_num_ctx=int(get("OLLAMA_NUM_CTX", "2048")),
             openai_base_url=get("OPENAI_BASE_URL", "https://api.openai.com/v1"),
             openai_api_key=get("OPENAI_API_KEY", ""),
-            chunk_tokenizer=get("CHUNK_TOKENIZER"),
             chunk_target_tokens=int(get("CHUNK_TARGET_TOKENS")),
             chunk_max_tokens=int(get("CHUNK_MAX_TOKENS")),
             chunk_overlap_tokens=int(get("CHUNK_OVERLAP_TOKENS")),

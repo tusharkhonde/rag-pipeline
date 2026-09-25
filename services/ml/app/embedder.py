@@ -10,7 +10,6 @@ from typing import Literal, Protocol
 
 import httpx
 
-from app.chunker import TokenCounter
 from app.config import Settings
 
 Kind = Literal["query", "document"]
@@ -26,37 +25,16 @@ class Embedder(Protocol):
 # ---------------------------------------------------------------- token counting
 
 
-class HfTokenCounter:
-    """Exact counts with the embedding model's own Hugging Face tokenizer (needs the `local` extra)."""
-
-    def __init__(self, model_name: str):
-        from transformers import AutoTokenizer
-
-        self._tokenizer = AutoTokenizer.from_pretrained(model_name)
-
-    def __call__(self, text: str) -> int:
-        # Special tokens ([CLS]/[SEP]) excluded; chunk_max_tokens leaves headroom for them.
-        return len(self._tokenizer(text, add_special_tokens=False, verbose=False)["input_ids"])
-
-
 def approx_token_count(text: str) -> int:
-    """Deliberately pessimistic estimate for when the exact tokenizer isn't available.
+    """Deliberately pessimistic token estimate, used to size chunks.
 
+    We don't load the embedding model's tokenizer in-process (the model runs inside Ollama).
     English prose averages ~4 chars/token and ~1.3 tokens/word for BERT-style tokenizers;
     identifiers, numbers and code run denser. Taking the max of two over-estimates means we
     under-fill chunks slightly rather than overflow the model's window. The model-side guard
     (Ollama's truncate=false) is what actually guarantees nothing is silently cut.
     """
     return max(math.ceil(len(text) / 3), math.ceil(len(text.split()) * 1.4))
-
-
-def build_token_counter(spec: str) -> TokenCounter:
-    """spec: 'approx' or 'hf:<model name>'."""
-    if spec == "approx":
-        return approx_token_count
-    if spec.startswith("hf:"):
-        return HfTokenCounter(spec.removeprefix("hf:"))
-    raise ValueError(f"Unknown CHUNK_TOKENIZER {spec!r} (expected 'approx' or 'hf:<model>')")
 
 
 # ---------------------------------------------------------------- providers
@@ -68,7 +46,7 @@ def _normalize(vector: list[float]) -> list[float]:
 
 
 class OllamaEmbedder:
-    """Embeddings from the Ollama container (the default here: no Hugging Face access needed)."""
+    """Embeddings from the Ollama container (the default provider)."""
 
     def __init__(
         self,
@@ -109,28 +87,6 @@ class OllamaEmbedder:
         return vectors
 
 
-class LocalEmbedder:
-    """In-process sentence-transformers (needs the `local` extra and Hugging Face weights)."""
-
-    def __init__(self, model_name: str, query_prefix: str, document_prefix: str, batch_size: int = 32):
-        from sentence_transformers import SentenceTransformer
-
-        self._model = SentenceTransformer(model_name, device="cpu")
-        self._prefix = {"query": query_prefix, "document": document_prefix}
-        self._batch_size = batch_size
-        self.model_id = f"local:{model_name}"
-        self.dim = self._model.get_sentence_embedding_dimension()
-
-    def embed(self, texts: list[str], kind: Kind) -> list[list[float]]:
-        texts = [self._prefix[kind] + t for t in texts]
-        # normalize_embeddings=True gives unit-length vectors: cosine similarity == dot product,
-        # and scores are comparable across queries.
-        vectors = self._model.encode(
-            texts, batch_size=self._batch_size, normalize_embeddings=True, convert_to_numpy=True
-        )
-        return vectors.tolist()
-
-
 class OpenAIEmbedder:
     """Any OpenAI-compatible /embeddings endpoint. Returns unit-normalized vectors."""
 
@@ -166,8 +122,6 @@ def build_embedder(settings: Settings) -> Embedder:
         )
     elif s.embeddings_provider == "openai":
         embedder = OpenAIEmbedder(s.openai_base_url, s.openai_api_key, s.embedding_model, s.embedding_dim)
-    elif s.embeddings_provider == "local":
-        embedder = LocalEmbedder(s.embedding_model, s.query_prefix, s.document_prefix)
     else:
         raise ValueError(f"Unknown EMBEDDINGS_PROVIDER {s.embeddings_provider!r}")
     if embedder.dim != s.embedding_dim:

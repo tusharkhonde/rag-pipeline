@@ -5,7 +5,7 @@ import httpx
 import pytest
 
 from app.config import Settings
-from app.embedder import OllamaEmbedder, approx_token_count, build_token_counter
+from app.embedder import OllamaEmbedder, approx_token_count
 
 
 class FakeOllama:
@@ -79,17 +79,13 @@ def test_approx_count_overestimates_word_count(text):
     assert approx_token_count(text) > len(text.split())
 
 
-def test_token_counter_spec():
-    assert build_token_counter("approx") is approx_token_count
-    with pytest.raises(ValueError):
-        build_token_counter("tiktoken")
-
-
 def test_provider_defaults_travel_together():
     ollama = Settings.from_env({})
     assert (ollama.embedding_model, ollama.document_prefix, ollama.chunk_max_tokens) == (
         "nomic-embed-text", "search_document: ", 800,
     )
-    local = Settings.from_env({"EMBEDDINGS_PROVIDER": "local"})
-    assert local.chunk_tokenizer == "hf:BAAI/bge-base-en-v1.5" and local.chunk_max_tokens == 500
+    openai = Settings.from_env({"EMBEDDINGS_PROVIDER": "openai"})
+    assert (openai.embedding_model, openai.document_prefix) == ("text-embedding-3-small", "")
+    with pytest.raises(ValueError):
+        Settings.from_env({"EMBEDDINGS_PROVIDER": "local"})
     assert Settings.from_env({"CHUNK_MAX_TOKENS": "700"}).chunk_max_tokens == 700
