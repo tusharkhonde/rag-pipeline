@@ -1,0 +1,35 @@
+Ground Station Operations FAQ
+
+What is a pass?
+A pass is the window during which a satellite is above the horizon of a ground station and
+can exchange data with it. Low-earth-orbit passes usually last between 6 and 12 minutes.
+Operators schedule passes a week ahead in the operations calendar.
+
+How much data can we download in one pass?
+The standard S-band link supports 2 megabits per second downlink, so a 10-minute pass moves
+about 150 megabytes. The X-band upgrade available at the Svalbard and Punta Arenas stations
+raises this to 150 megabits per second.
+
+What happens if a pass fails?
+The pass is marked as failed in the calendar and the scheduler automatically books the next
+available pass for the same satellite, usually within 90 minutes. Customers are notified by
+email if two consecutive passes fail. Two consecutive failed passes also open a SEV2 incident.
+
+Which stations does Acme Orbital operate?
+Acme Orbital operates seven ground stations: Svalbard, Punta Arenas, Hartebeesthoek, Perth,
+Fairbanks, Awarua and Inuvik. Svalbard sees every polar-orbiting satellite on almost every
+orbit and is therefore the busiest station.
+
+How are commands authorised?
+Every command sent to a satellite is signed with the customer's command key and verified by
+the ground station before uplink. Commands that change orbit or power configuration require a
+second operator to countersign within five minutes, otherwise the command expires.
+
+Can customers get raw telemetry?
+Yes. Raw frames are published to the telemetry.raw topic and exported to the customer's
+storage bucket within 15 minutes of the end of the pass. Decoded telemetry is available in
+the customer portal after processing, typically within 30 minutes.
+
+Who do I contact about a missed pass?
+Contact the Mission Operations desk, which is staffed around the clock. For anything affecting
+command uplink, page the on-call engineer directly instead of waiting for the desk.

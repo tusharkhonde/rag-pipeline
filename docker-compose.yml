@@ -1,7 +1,8 @@
 # One command: `docker compose up --build`
 # Startup order is enforced with healthchecks, not just container start order:
-#   postgres, redis, ollama  ──healthy──►  ollama-pull (one-shot)  ──completed──►  api
-#   postgres                 ──healthy──►  ml                      ──healthy────►  api
+#   ollama ──healthy──► ollama-pull-embed ──completed──► ml ──healthy──► api
+#   ollama ──healthy──► ollama-pull-llm   ──completed─────────────────► api
+#   postgres, redis ──healthy──► ml / api
 
 name: rag
 
@@ -46,8 +47,22 @@ services:
       timeout: 5s
       retries: 30
 
-  # One-shot job: pull the model on first run (no-op afterwards thanks to the volume), then exit 0.
-  ollama-pull:
+  # One-shot jobs: pull models on first run (no-op afterwards thanks to the volume), then exit 0.
+  # Split in two so ml only waits for the small embedding model, not the multi-GB LLM.
+  ollama-pull-embed:
+    image: ollama/ollama:latest
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+    # Only pull when Ollama is actually the embeddings provider.
+    entrypoint: ["sh", "-c", "[ \"$$EMBEDDINGS_PROVIDER\" != ollama ] || ollama pull \"$$EMBEDDING_MODEL\""]
+    restart: "no"
+
+  ollama-pull-llm:
     image: ollama/ollama:latest
     depends_on:
       ollama:
@@ -60,11 +75,20 @@ services:
   ml:
     build:
       context: ./services/ml
+      target: runtime
+      args:
+        ML_EXTRAS: ${ML_EXTRAS:-} # set to "local" for in-process sentence-transformers
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-rag}:${POSTGRES_PASSWORD:-rag}@postgres:5432/${POSTGRES_DB:-rag}
+      OLLAMA_URL: http://ollama:11434
+      EMBEDDINGS_PROVIDER: ${EMBEDDINGS_PROVIDER:-ollama}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-nomic-embed-text}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
+      ollama-pull-embed:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
       interval: 5s
@@ -93,7 +117,7 @@ services:
         condition: service_healthy
       ml:
         condition: service_healthy
-      ollama-pull:
+      ollama-pull-llm:
         condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]

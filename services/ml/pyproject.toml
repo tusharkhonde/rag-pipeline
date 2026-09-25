@@ -1,11 +1,33 @@
 [project]
 name = "rag-ml"
 version = "0.1.0"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
+  "pypdf>=5.0",
+  "psycopg[binary]>=3.2",
+  "psycopg-pool>=3.2",
+  "httpx>=0.27",
 ]
 
+[project.optional-dependencies]
+# In-process embeddings/reranking with sentence-transformers. Needs Hugging Face access at
+# build time to bake the weights. Build with: docker compose build --build-arg ML_EXTRAS=local ml
+local = ["sentence-transformers>=3.0", "torch>=2.4"]
+
 [dependency-groups]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "fpdf2>=2.7"]
+
+# CPU-only torch wheels. The default PyPI build bundles CUDA libraries (~2GB) we'd never use.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
