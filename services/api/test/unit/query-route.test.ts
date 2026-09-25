@@ -1,0 +1,59 @@
+import { describe, expect, it, vi } from 'vitest';
+import { buildApp } from '../../src/app.js';
+import { loadConfig } from '../../src/config.js';
+import type { Repo } from '../../src/db/repo.js';
+import type { AnswerEvent, Answerer } from '../../src/generation/answerer.js';
+
+const OWNED = '11111111-1111-4111-8111-111111111111';
+
+function setup(events: AnswerEvent[]) {
+  const repo = {
+    getCollection: vi.fn(async (_c: string, id: string) => (id === OWNED ? { id, name: 'd', version: 1, createdAt: '' } : null)),
+  } as unknown as Repo;
+  const answerer: Answerer = {
+    async *stream() {
+      yield* events;
+    },
+    answer: vi.fn(async () => (events.at(-1) as Extract<AnswerEvent, { type: 'done' }>).result),
+  };
+  const app = buildApp({
+    config: loadConfig({ DATABASE_URL: 'postgres://unused', LOG_LEVEL: 'fatal' }),
+    repo, ml: {} as never, retriever: {} as never, answerer,
+    resolveClientId: async () => 'client-a',
+  });
+  return { app, answerer };
+}
+
+const result = { answer: 'Run rollback [1].', citations: [], sources: [] } as never;
+const events: AnswerEvent[] = [
+  { type: 'sources', sources: [] },
+  { type: 'delta', text: 'Run ' },
+  { type: 'delta', text: 'rollback [1].' },
+  { type: 'done', result },
+];
+
+describe('POST /collections/:id/query', () => {
+  it('returns JSON when stream is not requested', async () => {
+    const { app } = setup(events);
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/query`, payload: { question: 'q' } });
+    expect(res.statusCode).toBe(200);
+    expect(res.json().answer).toBe('Run rollback [1].');
+  });
+
+  it('streams Server-Sent Events in order when stream=true', async () => {
+    const { app } = setup(events);
+    const res = await app.inject({ method: 'POST', url: `/collections/${OWNED}/query`, payload: { question: 'q', stream: true } });
+    expect(res.headers['content-type']).toContain('text/event-stream');
+    const names = [...res.body.matchAll(/^event: (\w+)$/gm)].map((m) => m[1]);
+    expect(names).toEqual(['sources', 'delta', 'delta', 'done']);
+    expect(res.body).toContain('data: {"text":"Run "}\n\n');
+  });
+
+  it('404s for a collection the client does not own', async () => {
+    const { app } = setup(events);
+    const res = await app.inject({
+      method: 'POST', url: '/collections/22222222-2222-4222-8222-222222222222/query', payload: { question: 'q' },
+    });
+    expect(res.statusCode).toBe(404);
+  });
+});

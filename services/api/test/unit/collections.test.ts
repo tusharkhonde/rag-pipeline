@@ -32,6 +32,7 @@ function setup(ml: Partial<MlClient> = {}) {
     repo,
     ml: mlClient,
     retriever: { retrieve: vi.fn() },
+    answerer: { stream: vi.fn(), answer: vi.fn() },
     resolveClientId: async () => CLIENT_A,
   });
   return { app, repo, ml: mlClient };

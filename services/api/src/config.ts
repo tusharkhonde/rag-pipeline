@@ -15,6 +15,12 @@ const Env = z.object({
   RETRIEVAL_CANDIDATES: z.coerce.number().int().min(1).max(200).default(20), // per retriever, before fusion
   RETRIEVAL_TOP_K: z.coerce.number().int().min(1).max(20).default(5), // chunks handed to the LLM
   HNSW_EF_SEARCH: z.coerce.number().int().min(10).max(1000).default(100),
+  LLM_TEMPERATURE: z.coerce.number().min(0).max(2).default(0.1),
+  LLM_MAX_TOKENS: z.coerce.number().int().min(16).max(4096).default(512),
+  // Budget for retrieved text in the prompt. Must fit the model's context window together with
+  // the system prompt, question and answer (Ollama is configured for 8192 in docker-compose.yml).
+  MAX_CONTEXT_TOKENS: z.coerce.number().int().min(256).default(3000),
+  ANSWER_CACHE_TTL_SECONDS: z.coerce.number().int().min(0).default(3600),
   MIGRATIONS_DIR: z.string().default(new URL('../../../db/migrations', import.meta.url).pathname),
 });
 

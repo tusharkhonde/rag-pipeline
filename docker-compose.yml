@@ -41,6 +41,9 @@ services:
       - ollama_models:/root/.ollama # model weights survive `docker compose down`
     environment:
       OLLAMA_KEEP_ALIVE: 24h # keep the model loaded in RAM; a cold load adds 5-15s to the first request
+      # Ollama silently drops the START of a prompt that exceeds the context window, which is where
+      # the system prompt (grounding rules) lives. Size it for sources + question + answer.
+      OLLAMA_CONTEXT_LENGTH: 8192
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 5s
