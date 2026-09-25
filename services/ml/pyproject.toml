@@ -1,0 +1,11 @@
+[project]
+name = "rag-ml"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+]
+
+[dependency-groups]
+dev = ["pytest>=8"]
